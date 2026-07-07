@@ -154,8 +154,15 @@ All domain logic lives here; services are called by routes and by other services
 - **How I reproduced it:**
   I created a test case with a song that has multiple tags and executed the search query.
 
+- **How I found the root cause:**
+  I opened `services/search_service.py` and read `search_songs()`. The filter on title/artist looked correct, so I focused on the query itself. The `.outerjoin(song_tags, Song.id == song_tags.c.song_id)` stood out: `song_tags` is the many-to-many table between songs and tags, so joining to it produces one row per tag a song has. A song with 3 tags therefore comes back as 3 identical rows, and since there's no `.distinct()`, each becomes a duplicate in the results. That explained why only multi-tag songs duplicated. I also confirmed the join wasn't needed at all — the filter never references tags, and tags are loaded separately via the relationship in `to_dict()`.
+
 - **Root cause:**
   .outerjoin(song_tags, Song.id == song_tags.c.song_id)
+  Joining `Song` to the `song_tags` association table fans out one result row per (song, tag) pair. Songs with 2+ tags appear multiple times; songs with 0 or 1 tag appear once — which is why the duplication looked inconsistent.
+
+- **My fix and side-effect check:**
+  I removed the `.outerjoin(song_tags, ...)` line so the query selects songs filtered only by title/artist, and cleaned up the now-unused `Tag`/`song_tags` imports. Each matching song now appears exactly once. Tags still show up correctly because `to_dict()` loads them through the `Song.tags` relationship, independent of this query. I verified by searching a term matching a multi-tag seed song (e.g. one of the 3-tag songs) and confirming it appears a single time while its tags are still present.
 
 ---
 
