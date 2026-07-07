@@ -175,9 +175,14 @@ All domain logic lives here; services are called by routes and by other services
 - **How I reproduced it:**
     I created a playlist with multiple songs and called `get_playlist_songs()`. I noticed that the last song was missing from the returned list.
 
-- **Root cause:**
-  The issue is in the `get_playlist_songs()` function where the query is slicing the results, excluding the last song.
+- **How I found the root cause:**
+  I opened `services/playlist_service.py` and read `get_playlist_songs()`. The query itself was correct — it fetched every song ordered by position. The problem was on the return line, `return [song.to_dict() for song in songs[:-1]]`. The `[:-1]` slice drops the last element of the list, so the highest-position song is always thrown away right before returning. The docstring even says the function "returns all songs in the playlist," so the code directly contradicted its own contract.
 
+- **Root cause:**
+  The return statement sliced the results with `songs[:-1]`, which excludes the last element. Because the songs were ordered by ascending position, this always dropped the final (highest-position) song in the playlist. On empty or single-song playlists the bug hid (the result was empty either way), so it only became visible on playlists with 2+ songs.
+
+- **My fix and side-effect check:**
+  I changed the return line from `[song.to_dict() for song in songs[:-1]]` to `[song.to_dict() for song in songs]`, so every song in the playlist is returned in position order. I verified by calling `get_playlist_songs()` on a seeded playlist and confirming the number of returned songs equals the number of `playlist_entries` rows for that playlist, with the last (highest-position) song now present. Ordering and the other playlist functions were untouched.
 
 ---
 
