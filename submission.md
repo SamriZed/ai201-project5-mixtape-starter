@@ -132,9 +132,16 @@ All domain logic lives here; services are called by routes and by other services
 - **How I reproduced it:**
     I created a repro_feed.py in my root directory and added a friend who listened to a song 23 hours ago. I then called the get_friends_listening_now() function and saw that the friend was included in the results.
 
+- **How I found the root cause:**
+  I opened `services/feed_service.py` and read `get_friends_listening_now()`. The query filters events with `ListeningEvent.listened_at >= cutoff`, and `cutoff` is `now - RECENT_THRESHOLD`. Following `RECENT_THRESHOLD` up to line 13 showed it was set to `timedelta(hours=24)`. That was the moment it clicked: a 24-hour window means anyone who listened any time in the last full day counts as "listening now," so yesterday's listeners leak in. The problem wasn't the query logic — it was the size of the threshold.
+
 - **Root cause:**
     RECENT_THRESHOLD = timedelta(hours=24)
       cutoff = datetime.now(timezone.utc) - RECENT_THRESHOLD
+  A 24-hour threshold is far too wide for a "listening now" feature. Any event up to 24 hours old passes `listened_at >= cutoff`, so a friend whose only listen was ~23 hours ago (yesterday) still appears as if they were listening now.
+
+- **My fix and side-effect check:**
+  I changed `RECENT_THRESHOLD` to `timedelta(minutes=30)`. I chose 30 minutes because the seed data documents that as the "recent" window — it plants events at 10/15/20 minutes ago labeled "should appear in listening now," and the next-oldest events at 2h+. I re-ran `repro_feed.py`: the friend who listened 20 hours ago no longer appears, while a friend who listened minutes ago still does. I also confirmed `get_activity_feed()` is unaffected, since it does not use `RECENT_THRESHOLD`.
 
 ---
 
