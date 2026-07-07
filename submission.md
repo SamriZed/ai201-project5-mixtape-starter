@@ -1,3 +1,47 @@
+# AI Usage
+
+I used AI tools (Claude Code) throughout this project, mainly to navigate and understand
+an unfamiliar codebase faster and to help structure my write-up. I still read the code,
+formed my own hypotheses, made the fixes, and verified them myself.
+
+**What I asked AI to explain or trace:**
+- Summarize what each service file is responsible for and trace route → service call chains,
+  which helped me write the codebase map.
+- Walk through `update_listening_streak()` and explain how its branch conditions decide
+  whether the streak increments or resets.
+- Explain how the SQLAlchemy many-to-many join in `search_songs()` produces one row per tag,
+  and why the `song_tags` join was unnecessary.
+- Explain how the "Friends Listening Now" recency filter works and why a 24-hour window was
+  too wide for a "listening now" feature.
+
+**What helped me understand / reproduce the bugs:**
+- The suggestion to reproduce date-dependent bugs (#1 Sunday, #2 recency) by passing explicit
+  `datetime` values instead of waiting for real time, so I could trigger them on demand.
+- Being pointed to the shipped `test_streak_increments_on_sunday` test as a ready-made
+  reproduction for bug #1.
+
+**Where I had to verify myself or the AI was wrong/incomplete:**
+- For bug #2, the AI first suggested a 5-minute threshold off the cuff. That was wrong for this
+  codebase — the seed data shows the app treats "recent" as within 30 minutes (it plants events
+  at 10–20 minutes ago labeled "should appear in listening now"). I used 30 minutes based on the
+  seed data, not the AI's first guess.
+- My own first hypothesis for bug #3 — that a song was being stored twice, once by title and once
+  by id — was wrong. Reading the query and models myself showed it was a join fan-out, not a
+  storage problem.
+- I confirmed every fix by running the tests or my own reproduction scripts rather than trusting
+  that a change worked.
+
+AI also helped draft wording and structure for parts of the root cause analysis entries below,
+which I reviewed against the actual code and edited to match my own understanding.
+
+---
+
+## git log --oneline screenshot
+
+![alt text](screenshot.png)
+
+```
+
 # Codebase map
 
 - **`app.py`** — Flask application factory. Creates the Flask app, initializes SQLAlchemy, registers all four blueprints (songs, playlists, users, feed), and sets up the database.
@@ -99,8 +143,6 @@ All domain logic lives here; services are called by routes and by other services
 ---
 
 ## Root Cause Analysis
-### How I reproduced the Bug
-
 ---
 
 ### Bug #1 — Listening streak keeps resetting
